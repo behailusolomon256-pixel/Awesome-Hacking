@@ -31,9 +31,27 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build debug APK
-        run: gradle --no-daemon assembleDebug
+          cache-read-only: false
+      - name: Build debug APK with dependency retry
         working-directory: android
+        shell: bash
+        run: |
+          set +e
+          for attempt in 1 2 3 4; do
+            echo "Gradle build attempt $attempt of 4"
+            gradle --no-daemon --max-workers=2 --no-parallel assembleDebug
+            result=$?
+            if [ "$result" -eq 0 ]; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              wait_seconds=$((attempt * 30))
+              echo "Build failed. Waiting ${wait_seconds}s before retrying cached dependency downloads."
+              sleep "$wait_seconds"
+            fi
+          done
+          echo "All four build attempts failed."
+          exit "$result"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
